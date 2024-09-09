@@ -6,12 +6,16 @@ ipywidgets
 isort
 jupyterlab
 matplotlib
-numpy
+numpy<2
 pandas
 pyarrow
 scikit-learn
 scipy
 seaborn
 tables
-torch
 tqdm
+neurokit2
+torch==1.13.1+cu117 
+torchvision==0.14.1+cu117 
+torchaudio==0.13.1
+-f https://download.pytorch.org/whl/torch_stable.html

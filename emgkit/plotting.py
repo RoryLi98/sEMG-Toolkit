@@ -290,6 +290,112 @@ def plot_signal(
         plt.show()
 
 
+def plot_all_signal(
+    s: np.ndarray | pd.DataFrame | pd.Series | torch.Tensor,
+    fs: float = 1.0,
+    labels: np.ndarray | pd.Series | None = None,
+    title: str | None = None,
+    x_label: str = "Time [s]",
+    y_label: str = "Amplitude [a.u.]",
+    fig_size: tuple[int, int] | None = None,
+    file_name: str | None = None,
+) -> None:
+    """Helper function to plot a signal with multiple channels, each in a different subplot.
+
+    Parameters
+    ----------
+    s : ndarray or DataFrame or Series or Tensor
+        Signal to plot:
+        - if it's a NumPy array or PyTorch Tensor, the shape must be (n_channels, n_samples);
+        - if it's a DataFrame or Series, the index and column(s) must represent
+          the samples and the channel(s), respectively.
+    fs : float, default=1.0
+        Sampling frequency of the signal (relevant if s is a NumPy array).
+    labels : ndarray or Series or None, default=None
+        NumPy array or Series containing a label for each sample.
+    title : str or None, default=None
+        Title of the plot.
+    x_label : str, default="Time [s]"
+        Label for X axis.
+    y_label : str, default="Amplitude [a.u.]"
+        Label for Y axis.
+    fig_size : tuple of (int, int) or None, default=None
+        Height and width of the plot.
+    file_name : str or None, default=None
+        Name of the file where the image will be saved to.
+    """
+    # Convert signal to DataFrame
+    if isinstance(s, pd.DataFrame):
+        s_df = s
+    elif isinstance(s, pd.Series):
+        s_df = s.to_frame()
+    else:
+        s_arr = s.cpu().numpy() if isinstance(s, torch.Tensor) else s
+        if len(s_arr.shape) == 1:
+            s_arr = s_arr.reshape(1, -1)
+        s_df = pd.DataFrame(s_arr.T, index=np.arange(s_arr.shape[1]) / fs)
+
+    # Create figure with subplots and shared X axis
+    n_cols = 1
+    n_rows = s_df.shape[1]
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        sharex="all",
+        squeeze=False,
+        figsize=fig_size,
+        layout="constrained",
+    )
+    axes = [ax for nested_ax in axes for ax in nested_ax]  # flatten axes
+    # Set title and label of X and Y axes
+    if title is not None:
+        fig.suptitle(title, fontsize="xx-large")
+    fig.supxlabel(x_label)
+    fig.supylabel(y_label)
+
+    # Plot signal
+    if labels is not None:
+        # Get label intervals
+        labels_intervals = []
+        labels_tmp = [
+            list(group)
+            for _, group in groupby(
+                labels.reset_index().to_numpy().tolist(), key=lambda t: t[1]
+            )
+        ]
+        for cur_label in labels_tmp:
+            cur_label_start, cur_label_name = cur_label[0]
+            cur_label_stop = cur_label[-1][0]
+            labels_intervals.append((cur_label_name, cur_label_start, cur_label_stop))
+        # Get set of unique labels
+        label_set = set(map(lambda t: t[0], labels_intervals))
+        # Create dictionary label -> color
+        cmap = cm.get_cmap("plasma", len(label_set))
+        color_dict = {lab: cmap(i) for i, lab in enumerate(label_set)}
+        for i, ch_i in enumerate(s_df):
+            for label, idx_from, idx_to in labels_intervals:
+                axes[i].plot(
+                    s_df[ch_i].loc[idx_from:idx_to],
+                    color=color_dict[label],
+                )
+        # Add legend
+        fig.legend(
+            handles=[
+                mpl_patches.Patch(color=c, label=lab) for lab, c in color_dict.items()
+            ],
+            loc="center right",
+        )
+    else:
+        for i, ch_i in enumerate(s_df):
+            axes[i].plot(s_df[ch_i])
+
+    # Show or save plot
+    if file_name is not None:
+        plt.savefig(file_name)
+    else:
+        plt.show()
+
+
 def plot_waveforms(
     wfs: np.ndarray,
     fs: float,
@@ -317,10 +423,7 @@ def plot_waveforms(
         Name of the file where the image will be saved to.
     """
     n_ch = wfs.shape[0]
-    assert (
-        n_ch % n_cols == 0
-    ), "The number of channels must be divisible for the number of columns."
-    n_rows = n_ch // n_cols
+    n_rows = int(np.ceil(n_ch / n_cols))
     t = np.arange(wfs.shape[2]) * 1000 / fs
 
     f, axes = plt.subplots(
@@ -336,10 +439,13 @@ def plot_waveforms(
     for i in range(n_rows):
         for j in range(n_cols):
             idx = i * n_cols + j
-            axes[i, j].set_title(f"Ch{idx}")
-            axes[i, j].plot(t, wfs[idx].T)
+            if idx < n_ch:
+                axes[i, j].set_title(f"Ch {idx+1}")
+                axes[i, j].plot(t, wfs[idx].T)
+            else:
+                axes[i, j].axis("off")  # Hide unused subplots
 
-    f.suptitle("MUAP waveforms")
+    f.suptitle("MUAP Waveforms")
     f.supxlabel("Time [ms]")
     f.supylabel(y_label)
 
@@ -427,13 +533,21 @@ def plot_ic_spikes(
         layout="constrained",
     )
     axes = [ax for nested_ax in axes for ax in nested_ax]  # flatten axes
-    f.suptitle("ICs spike trains")
+    f.suptitle("ICs Spike Trains")
     f.supxlabel("Time [s]")
     f.supylabel("Amplitude [a.u.]")
 
-    for i, mu in enumerate(spikes_t):
+    for i, (mu, spikes) in enumerate(spikes_t.items()):
         axes[i].plot(ics[mu])
-        axes[i].plot(spikes_t[mu], ics[mu].loc[spikes_t[mu]], "x")
+        axes[i].plot(spikes, ics[mu].loc[spikes], "x")
+        axes[i].set_ylabel(
+            f"MU {i+1}",
+            rotation=90,
+            labelpad=0,
+            ha="right",
+            va="center",
+            fontweight="bold",
+        )
 
     if file_name is not None:
         plt.savefig(file_name)
@@ -459,7 +573,10 @@ def raster_plot(
         Name of the file where the image will be saved to.
     """
     f, ax = plt.subplots(figsize=fig_size, layout="constrained")
-    f.suptitle("Raster plot")
+    f.patch.set_facecolor("white")  # Set background color to white
+    ax.set_facecolor("white")
+
+    f.suptitle("Raster Plot")
     f.supxlabel("Time [s]")
     ax.yaxis.set_tick_params(labelleft=False)
     ax.set_yticks([])
@@ -469,6 +586,19 @@ def raster_plot(
             x=spikes_t[mu],
             y=[len(spikes_t) - i] * spikes_t[mu].size,
             marker="|",
+            s=1200,
+            linewidths=2,
+        )
+        ax.text(
+            x=0,  # Adjust as necessary to fit your plot
+            y=len(spikes_t) - i,
+            s=f"MU {i+1}",
+            va="center",
+            ha="right",
+            rotation=90,
+            fontweight="bold",
+            fontsize=10,
+            transform=ax.get_yaxis_transform(),
         )
 
     if file_name is not None:
@@ -481,6 +611,7 @@ def plot_discharges(
     spikes_t: dict[str, np.ndarray],
     sig_len_s: float,
     fs: float,
+    n_cols: int = 3,
     win_len_s: float = 1.0,
     fig_size: tuple[int, int] | None = None,
     file_name: str | None = None,
@@ -503,17 +634,27 @@ def plot_discharges(
     file_name : str or None, default=None
         Name of the file where the image will be saved to.
     """
+    num_mus = len(spikes_t)
+    num_cols = n_cols  # Use the n_cols parameter
+    num_rows = int(np.ceil(num_mus / num_cols))  # Dynamically calculate rows
+
     f, axes = plt.subplots(
-        nrows=len(spikes_t),
+        nrows=num_rows,
+        ncols=num_cols,
         sharex="all",
-        squeeze=False,
         figsize=fig_size,
-        layout="constrained",
+        constrained_layout=True,
     )
-    axes = [ax for nested_ax in axes for ax in nested_ax]  # flatten axes
-    f.suptitle("Discharge rate")
+
+    # If only one row or column, axes might not be 2D, so flatten the axes
+    if num_mus == 1:
+        axes = [axes]
+    else:
+        axes = [ax for row in axes for ax in row]  # Flatten axes
+
+    f.suptitle("Discharge Rate")
     f.supxlabel("Time [s]")
-    f.supylabel("Discharge rate [spike/s]")
+    f.supylabel("Discharge Rate [spike/s]")
 
     # Dense representation
     spikes_bin = sparse_to_dense(spikes_t, sig_len_s, fs)
@@ -521,11 +662,14 @@ def plot_discharges(
     for i, mu in enumerate(spikes_t):
         smooth_dr = smoothed_discharge_rate(spikes_bin[mu], fs, win_len_s=win_len_s)
         inst_dr = instantaneous_discharge_rate(spikes_t[mu])
-        axes[i].set_title(mu)
+        axes[i].set_title(f"MU{i+1}")
         axes[i].plot(smooth_dr, label="Smooth")
         axes[i].plot(inst_dr, ".", label="Instantaneous")
-    handles, labels = axes[-1].get_legend_handles_labels()
-    f.legend(handles, labels, loc="center right")
+        axes[i].legend()
+
+    # Hide any unused subplots
+    for j in range(num_mus, len(axes)):
+        axes[j].set_visible(False)
 
     if file_name is not None:
         plt.savefig(file_name)

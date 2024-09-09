@@ -25,6 +25,8 @@ from ._filtering import (
     bandstop_filter,
     highpass_filter,
     lowpass_filter,
+    notch_filter,
+    plot_all_channels_frequency_spectrum,
 )
 from ._pca_whitening import PCAWhitening
 from ._zca_whitening import ZCAWhitening

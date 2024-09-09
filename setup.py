@@ -27,9 +27,11 @@ setup(
     packages=[
         "emgkit",
         "emgkit.decomposition",
+        "emgkit.preprocessing",
+    ],
+    py_modules=[
         "emgkit.features",
         "emgkit.plotting",
-        "emgkit.preprocessing",
         "emgkit.spike_stats",
         "emgkit.utils",
     ],

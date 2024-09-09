@@ -333,9 +333,12 @@ def detect_spikes(
     float
         SIL measure.
     """
-    assert bin_alg in (
-        "kmeans",
-        "otsu",
+    assert (
+        bin_alg
+        in (
+            "kmeans",
+            "otsu",
+        )
     ), f'The binarization algorithm can be either "kmeans" or "otsu": the provided one was {bin_alg}.'
 
     # Convert to array
